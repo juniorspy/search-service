@@ -1,0 +1,22 @@
+{
+  "name": "search-service",
+  "type": "docker-compose",
+  "compose": {
+    "file": "docker-compose.yml",
+    "service": "search-service"
+  },
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "port": 3000,
+  "env": {
+    "NODE_ENV": "production",
+    "PORT": "3000",
+    "MEILISEARCH_HOST": "https://melisearch.onrpa.com",
+    "GLOBAL_INDEX": "colmado_inventory",
+    "LOCAL_INDEX_PREFIX": "productos_colmado_",
+    "LOG_LEVEL": "info",
+    "REQUEST_TIMEOUT": "5000"
+  }
+}
