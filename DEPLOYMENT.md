@@ -17,7 +17,7 @@
 ### Paso 3: Variables de entorno REQUERIDAS
 
 ```env
-MEILISEARCH_HOST=https://melisearch.onrpa.com
+MEILISEARCH_HOST=http://10.0.1.16:7700
 MEILISEARCH_API_KEY=lsT73ukYM4YV+5/mYoI/CrsoyWf2pucWeLepowtwIXI=
 NODE_ENV=production
 PORT=3000
@@ -26,6 +26,11 @@ LOCAL_INDEX_PREFIX=productos_colmado_
 LOG_LEVEL=info
 REQUEST_TIMEOUT=5000
 ```
+
+**IMPORTANTE:**
+- Usa la **IP interna** de Meilisearch dentro de la red `dokploy-network` para mejor performance
+- Si ambos servicios están en el mismo servidor Dokploy, usa `http://10.0.1.16:7700`
+- Alternativamente puedes usar `http://meilisearch:7700` si el alias DNS está configurado correctamente
 
 ### Paso 4: Configurar puerto
 

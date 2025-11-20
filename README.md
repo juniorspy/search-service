@@ -161,8 +161,8 @@ Create a `.env` file based on `.env.example`:
 PORT=3000
 NODE_ENV=production
 
-# Meilisearch Configuration
-MEILISEARCH_HOST=https://melisearch.onrpa.com
+# Meilisearch Configuration (Use internal IP for production)
+MEILISEARCH_HOST=http://10.0.1.16:7700
 MEILISEARCH_API_KEY=your_api_key_here
 
 # Search Configuration
@@ -175,6 +175,8 @@ LOG_LEVEL=info
 # Optional: Request Timeout (ms)
 REQUEST_TIMEOUT=5000
 ```
+
+**IMPORTANT:** For production deployments in Dokploy, use the **internal IP** (`http://10.0.1.16:7700`) instead of the external URL for better performance and reliability within the `dokploy-network`.
 
 ## Installation & Usage
 
@@ -246,7 +248,7 @@ docker run -p 3000:3000 --env-file .env search-service
 **Environment variables to configure in Dokploy:**
 
 ```
-MEILISEARCH_HOST=https://melisearch.onrpa.com
+MEILISEARCH_HOST=http://10.0.1.16:7700
 MEILISEARCH_API_KEY=your_production_key
 GLOBAL_INDEX=colmado_inventory
 LOCAL_INDEX_PREFIX=productos_colmado_
@@ -254,6 +256,8 @@ NODE_ENV=production
 PORT=3000
 LOG_LEVEL=info
 ```
+
+**Note:** Use the internal IP address (`http://10.0.1.16:7700`) for Meilisearch when both services are in the same Dokploy network. This provides better performance and avoids external DNS resolution.
 
 ## Fallback Logic Explained
 
@@ -442,10 +446,10 @@ Automatically configured in Dockerfile:
 **Problem:** `ECONNREFUSED` or timeout errors
 
 **Solutions:**
-1. Verify `MEILISEARCH_HOST` is correct
-2. Check Meilisearch is running: `curl https://melisearch.onrpa.com/health`
+1. Verify `MEILISEARCH_HOST` is correct (use internal IP `http://10.0.1.16:7700` in Dokploy)
+2. Check Meilisearch is running: `curl http://10.0.1.16:7700/health`
 3. Validate `MEILISEARCH_API_KEY` is correct
-4. Check firewall/network rules
+4. If using external URL, check firewall/network rules and DNS resolution
 
 ### Invalid API Key
 

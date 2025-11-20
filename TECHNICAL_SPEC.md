@@ -714,10 +714,12 @@ All configuration is done through environment variables. No hardcoded values.
 #### Required Variables
 
 ```bash
-# Meilisearch Connection
-MEILISEARCH_HOST=https://melisearch.onrpa.com
+# Meilisearch Connection (Use internal IP for production in Dokploy)
+MEILISEARCH_HOST=http://10.0.1.16:7700
 MEILISEARCH_API_KEY=lsT73ukYM4YV+5/mYoI/CrsoyWf2pucWeLepowtwIXI=
 ```
+
+**IMPORTANT:** When deploying to Dokploy with both services in the same `dokploy-network`, use the internal IP address (`http://10.0.1.16:7700`) instead of the external URL (`https://melisearch.onrpa.com`) for better performance and reliability.
 
 #### Optional Variables (Have Defaults)
 
@@ -750,7 +752,7 @@ MEILISEARCH_HOST=http://localhost:7700  # Optional local instance
 ```bash
 NODE_ENV=production
 LOG_LEVEL=info
-MEILISEARCH_HOST=https://melisearch.onrpa.com
+MEILISEARCH_HOST=http://10.0.1.16:7700  # Internal IP in dokploy-network
 ```
 
 **Testing:**
@@ -988,12 +990,12 @@ docker exec search-service node -e "require('http').get('http://localhost:3000/a
 
 **Debug Steps:**
 ```bash
-# Check if index exists
-curl https://melisearch.onrpa.com/indexes \
+# Check if index exists (use internal IP in Dokploy)
+curl http://10.0.1.16:7700/indexes \
   -H "Authorization: Bearer YOUR_API_KEY"
 
 # Test search directly in Meilisearch
-curl https://melisearch.onrpa.com/indexes/colmado_inventory/search \
+curl http://10.0.1.16:7700/indexes/colmado_inventory/search \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"q": "arroz"}'
 ```
