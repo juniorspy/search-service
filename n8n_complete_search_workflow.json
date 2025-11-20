@@ -1,0 +1,176 @@
+{
+  "name": "Product Search Workflow - NeoColmado",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger-001",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "query",
+              "value": "pan de agua"
+            },
+            {
+              "name": "slug",
+              "value": "colmado_william"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-search-params-001",
+      "name": "Set Search Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://search.onrpa.com/api/v1/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"{{ $json.query }}\",\n  \"slug\": \"{{ $json.slug }}\",\n  \"limit\": {{ $json.limit }}\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "search-product-001",
+      "name": "Search Product",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-001",
+              "leftValue": "={{ $json.data.total }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-results-001",
+      "name": "Products Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract search results\nconst searchData = $input.item.json.data;\nconst products = searchData.hits;\nconst source = searchData.source;\nconst isLocal = source === 'local';\n\n// Process each product\nconst processedProducts = products.map(product => ({\n  id: product.id,\n  nombre: product.nombre,\n  precio: parseFloat(product.precio),\n  unidad: product.unidadVenta || product.unidad || 'unidad',\n  disponible: product.disponibleVentas !== false,\n  categoria: product.categoria || product.categoriaNombre || 'General'\n}));\n\n// Create response\nreturn {\n  json: {\n    success: true,\n    source: source,\n    message: isLocal \n      ? `Encontré ${products.length} producto(s) en el inventario del colmado.`\n      : `Encontré ${products.length} producto(s) en el catálogo global (precios referenciales).`,\n    products: processedProducts,\n    needsValidation: !isLocal,\n    metadata: {\n      query: searchData.query,\n      total: searchData.total,\n      indexName: searchData.indexName,\n      processingTimeMs: searchData.processingTimeMs\n    }\n  }\n};"
+      },
+      "id": "process-results-001",
+      "name": "Process Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// No products found\nconst query = $('Set Search Parameters').item.json.query;\n\nreturn {\n  json: {\n    success: false,\n    message: `No encontré \"${query}\" en el inventario.`,\n    suggestion: 'Intenta con otro producto o pregunta por alternativas.',\n    products: [],\n    metadata: {\n      query: query,\n      total: 0\n    }\n  }\n};"
+      },
+      "id": "no-results-001",
+      "name": "No Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 400]
+    }
+  ],
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "Set Search Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Search Parameters": {
+      "main": [
+        [
+          {
+            "node": "Search Product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Product": {
+      "main": [
+        [
+          {
+            "node": "Products Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Products Found?": {
+      "main": [
+        [
+          {
+            "node": "Process Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-11-20T00:00:00.000Z",
+  "versionId": "1"
+}
