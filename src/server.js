@@ -46,7 +46,8 @@ app.get('/', (req, res) => {
 app.use('/api/v1', routes);
 
 // Health check at root level
-app.use('/health', routes);
+const searchController = require('./controllers/searchController');
+app.get('/health', searchController.health);
 
 // 404 handler
 app.use(notFoundHandler);
