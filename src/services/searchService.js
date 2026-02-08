@@ -14,7 +14,7 @@ const LOCAL_INDEX_PREFIX = process.env.LOCAL_INDEX_PREFIX || 'productos_colmado_
  * @returns {Promise<Object>} Search results with metadata
  */
 async function searchWithFallback(query, slug, limit = 20, offset = 0) {
-  const localIndexName = `${LOCAL_INDEX_PREFIX}${slug}`;
+  const localIndexName = `${LOCAL_INDEX_PREFIX}${slug}`.replace(/[^a-z0-9_]+/gi, '_').toLowerCase();
 
   logger.info('Search request', { query, slug, localIndexName, limit, offset });
 
