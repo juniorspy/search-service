@@ -19,65 +19,56 @@ async function searchWithFallback(query, slug, limit = 20, offset = 0) {
   logger.info('Search request', { query, slug, localIndexName, limit, offset });
 
   try {
-    // Step 1: Search in local index
+    // Search both indexes in parallel
     const localIndex = meilisearchClient.index(localIndexName);
+    const globalIndex = meilisearchClient.index(GLOBAL_INDEX);
 
-    let localResults;
-    try {
-      localResults = await localIndex.search(query, {
-        limit,
-        offset,
-      });
+    const [localResult, globalResult] = await Promise.allSettled([
+      localIndex.search(query, { limit, offset }),
+      globalIndex.search(query, { limit, offset }),
+    ]);
 
-      logger.info('Local search completed', {
-        indexName: localIndexName,
-        totalHits: localResults.estimatedTotalHits || localResults.hits.length,
-      });
+    const localHits = localResult.status === 'fulfilled' ? localResult.value.hits || [] : [];
+    const globalHits = globalResult.status === 'fulfilled' ? globalResult.value.hits || [] : [];
 
-      // If we found results in local index, return them
-      if (localResults.hits && localResults.hits.length > 0) {
-        return {
-          source: 'local',
-          indexName: localIndexName,
-          hits: localResults.hits,
-          total: localResults.estimatedTotalHits || localResults.hits.length,
-          query,
-          limit,
-          offset,
-          processingTimeMs: localResults.processingTimeMs,
-        };
-      }
-
-      logger.info('No results in local index, falling back to global', { localIndexName });
-    } catch (localError) {
-      // If local index doesn't exist or has errors, log and fall through to global
-      logger.warn('Local index search failed, falling back to global', {
-        localIndexName,
-        error: localError.message,
-      });
+    if (localResult.status === 'rejected') {
+      logger.warn('Local index search failed', { localIndexName, error: localResult.reason.message });
+    } else {
+      logger.info('Local search completed', { indexName: localIndexName, totalHits: localHits.length });
     }
 
-    // Step 2: Fallback to global index
-    const globalIndex = meilisearchClient.index(GLOBAL_INDEX);
-    const globalResults = await globalIndex.search(query, {
-      limit,
-      offset,
-    });
+    if (globalResult.status === 'rejected') {
+      logger.warn('Global index search failed', { indexName: GLOBAL_INDEX, error: globalResult.reason.message });
+    } else {
+      logger.info('Global search completed', { indexName: GLOBAL_INDEX, totalHits: globalHits.length });
+    }
 
-    logger.info('Global search completed', {
-      indexName: GLOBAL_INDEX,
-      totalHits: globalResults.estimatedTotalHits || globalResults.hits.length,
-    });
+    // Tag each hit with its source
+    const taggedLocal = localHits.map(hit => ({ ...hit, _source: 'local' }));
+    const taggedGlobal = globalHits.map(hit => ({ ...hit, _source: 'global' }));
+
+    // Merge: local results first, then global results not already in local (by nombre)
+    const localNames = new Set(taggedLocal.map(h => (h.nombre || '').toLowerCase().trim()));
+    const uniqueGlobal = taggedGlobal.filter(h => !localNames.has((h.nombre || '').toLowerCase().trim()));
+    const merged = [...taggedLocal, ...uniqueGlobal].slice(0, limit);
+
+    const source = taggedLocal.length > 0 && uniqueGlobal.length > 0
+      ? 'mixed'
+      : taggedLocal.length > 0 ? 'local' : 'global';
 
     return {
-      source: 'global',
-      indexName: GLOBAL_INDEX,
-      hits: globalResults.hits,
-      total: globalResults.estimatedTotalHits || globalResults.hits.length,
+      source,
+      hits: merged,
+      total: merged.length,
+      localHits: taggedLocal.length,
+      globalHits: uniqueGlobal.length,
       query,
       limit,
       offset,
-      processingTimeMs: globalResults.processingTimeMs,
+      processingTimeMs: Math.max(
+        localResult.status === 'fulfilled' ? localResult.value.processingTimeMs || 0 : 0,
+        globalResult.status === 'fulfilled' ? globalResult.value.processingTimeMs || 0 : 0,
+      ),
     };
 
   } catch (error) {
