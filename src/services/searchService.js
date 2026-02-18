@@ -47,21 +47,17 @@ async function searchWithFallback(query, slug, limit = 20, offset = 0) {
     const taggedLocal = localHits.map(hit => ({ ...hit, _source: 'local' }));
     const taggedGlobal = globalHits.map(hit => ({ ...hit, _source: 'global' }));
 
-    // Merge: local results first, then global results not already in local (by nombre)
-    const localNames = new Set(taggedLocal.map(h => (h.nombre || '').toLowerCase().trim()));
-    const uniqueGlobal = taggedGlobal.filter(h => !localNames.has((h.nombre || '').toLowerCase().trim()));
-    const merged = [...taggedLocal, ...uniqueGlobal].slice(0, limit);
-
-    const source = taggedLocal.length > 0 && uniqueGlobal.length > 0
-      ? 'mixed'
-      : taggedLocal.length > 0 ? 'local' : 'global';
+    // Local-first: only fall back to global when local has no results
+    const useLocal = taggedLocal.length > 0;
+    const hits = useLocal ? taggedLocal.slice(0, limit) : taggedGlobal.slice(0, limit);
+    const source = useLocal ? 'local' : (taggedGlobal.length > 0 ? 'global' : 'none');
 
     return {
       source,
-      hits: merged,
-      total: merged.length,
+      hits,
+      total: hits.length,
       localHits: taggedLocal.length,
-      globalHits: uniqueGlobal.length,
+      globalHits: taggedGlobal.length,
       query,
       limit,
       offset,
