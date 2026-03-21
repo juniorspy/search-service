@@ -47,10 +47,32 @@ async function searchWithFallback(query, slug, limit = 20, offset = 0) {
     const taggedLocal = localHits.map(hit => ({ ...hit, _source: 'local' }));
     const taggedGlobal = globalHits.map(hit => ({ ...hit, _source: 'global' }));
 
-    // Local-first: only fall back to global when local has no results
-    const useLocal = taggedLocal.length > 0;
-    const hits = useLocal ? taggedLocal.slice(0, limit) : taggedGlobal.slice(0, limit);
-    const source = useLocal ? 'local' : (taggedGlobal.length > 0 ? 'global' : 'none');
+    // Merge: local first, then global (deduplicated by normalized name)
+    const seenNames = new Set();
+    const merged = [];
+
+    // Add local hits first (they have confirmed prices)
+    for (const hit of taggedLocal) {
+      const key = (hit.nombre || hit.name || '').toLowerCase().trim();
+      if (key) seenNames.add(key);
+      merged.push(hit);
+    }
+
+    // Add global hits that aren't duplicates of local
+    for (const hit of taggedGlobal) {
+      const key = (hit.nombre || hit.name || '').toLowerCase().trim();
+      if (!seenNames.has(key)) {
+        seenNames.add(key);
+        merged.push(hit);
+      }
+    }
+
+    const hits = merged.slice(0, limit);
+    const source = taggedLocal.length > 0 && taggedGlobal.length > 0
+      ? 'mixed'
+      : taggedLocal.length > 0 ? 'local'
+      : taggedGlobal.length > 0 ? 'global'
+      : 'none';
 
     return {
       source,
