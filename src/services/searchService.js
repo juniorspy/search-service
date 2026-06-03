@@ -19,17 +19,16 @@ async function searchWithFallback(query, slug, limit = 20, offset = 0) {
   logger.info('Search request', { query, slug, localIndexName, limit, offset });
 
   try {
-    // Search both indexes in parallel
+    // Search local first. Global is only a fallback when local returns no hits.
     const localIndex = meilisearchClient.index(localIndexName);
     const globalIndex = meilisearchClient.index(GLOBAL_INDEX);
 
-    const [localResult, globalResult] = await Promise.allSettled([
-      localIndex.search(query, { limit, offset }),
-      globalIndex.search(query, { limit, offset }),
-    ]);
+    const localResult = await Promise.resolve()
+      .then(() => localIndex.search(query, { limit, offset }))
+      .then(value => ({ status: 'fulfilled', value }))
+      .catch(reason => ({ status: 'rejected', reason }));
 
     const localHits = localResult.status === 'fulfilled' ? localResult.value.hits || [] : [];
-    const globalHits = globalResult.status === 'fulfilled' ? globalResult.value.hits || [] : [];
 
     if (localResult.status === 'rejected') {
       logger.warn('Local index search failed', { localIndexName, error: localResult.reason.message });
@@ -37,56 +36,48 @@ async function searchWithFallback(query, slug, limit = 20, offset = 0) {
       logger.info('Local search completed', { indexName: localIndexName, totalHits: localHits.length });
     }
 
+    if (localHits.length > 0) {
+      const hits = localHits.map(hit => ({ ...hit, _source: 'local' })).slice(0, limit);
+      return {
+        source: 'local',
+        indexName: localIndexName,
+        hits,
+        total: hits.length,
+        localHits: hits.length,
+        globalHits: 0,
+        query,
+        limit,
+        offset,
+        processingTimeMs: localResult.value.processingTimeMs || 0,
+      };
+    }
+
+    const globalResult = await Promise.resolve()
+      .then(() => globalIndex.search(query, { limit, offset }))
+      .then(value => ({ status: 'fulfilled', value }))
+      .catch(reason => ({ status: 'rejected', reason }));
+
     if (globalResult.status === 'rejected') {
       logger.warn('Global index search failed', { indexName: GLOBAL_INDEX, error: globalResult.reason.message });
+      throw globalResult.reason;
     } else {
-      logger.info('Global search completed', { indexName: GLOBAL_INDEX, totalHits: globalHits.length });
+      logger.info('Global search completed', { indexName: GLOBAL_INDEX, totalHits: (globalResult.value.hits || []).length });
     }
 
-    // Tag each hit with its source
-    const taggedLocal = localHits.map(hit => ({ ...hit, _source: 'local' }));
-    const taggedGlobal = globalHits.map(hit => ({ ...hit, _source: 'global' }));
-
-    // Merge: local first, then global (deduplicated by normalized name)
-    const seenNames = new Set();
-    const merged = [];
-
-    // Add local hits first (they have confirmed prices)
-    for (const hit of taggedLocal) {
-      const key = (hit.nombre || hit.name || '').toLowerCase().trim();
-      if (key) seenNames.add(key);
-      merged.push(hit);
-    }
-
-    // Add global hits that aren't duplicates of local
-    for (const hit of taggedGlobal) {
-      const key = (hit.nombre || hit.name || '').toLowerCase().trim();
-      if (!seenNames.has(key)) {
-        seenNames.add(key);
-        merged.push(hit);
-      }
-    }
-
-    const hits = merged.slice(0, limit);
-    const source = taggedLocal.length > 0 && taggedGlobal.length > 0
-      ? 'mixed'
-      : taggedLocal.length > 0 ? 'local'
-      : taggedGlobal.length > 0 ? 'global'
-      : 'none';
+    const globalHits = globalResult.value.hits || [];
+    const hits = globalHits.map(hit => ({ ...hit, _source: 'global' })).slice(0, limit);
 
     return {
-      source,
+      source: hits.length > 0 ? 'global' : 'none',
+      indexName: GLOBAL_INDEX,
       hits,
       total: hits.length,
-      localHits: taggedLocal.length,
-      globalHits: taggedGlobal.length,
+      localHits: 0,
+      globalHits: hits.length,
       query,
       limit,
       offset,
-      processingTimeMs: Math.max(
-        localResult.status === 'fulfilled' ? localResult.value.processingTimeMs || 0 : 0,
-        globalResult.status === 'fulfilled' ? globalResult.value.processingTimeMs || 0 : 0,
-      ),
+      processingTimeMs: globalResult.value.processingTimeMs || 0,
     };
 
   } catch (error) {
