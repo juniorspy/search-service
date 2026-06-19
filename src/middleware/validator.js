@@ -1,15 +1,38 @@
 const { body, validationResult } = require('express-validator');
 
+const hasValidQueryValue = (value) => {
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (!value || typeof value !== 'object') return false;
+  const query = value.query || value.nombre || value.name || value.text;
+  return typeof query === 'string' && query.trim().length > 0;
+};
+
 /**
  * Validation rules for search endpoint
  */
 const searchValidationRules = () => {
   return [
     body('query')
+      .optional()
       .isString()
       .trim()
       .notEmpty()
-      .withMessage('Query is required and must be a non-empty string'),
+      .withMessage('Query must be a non-empty string'),
+    body('queries')
+      .optional()
+      .isArray({ min: 1, max: 50 })
+      .withMessage('Queries must be an array with 1 to 50 items'),
+    body('queries.*')
+      .optional()
+      .custom(hasValidQueryValue)
+      .withMessage('Each query must be a non-empty string or an object with query/nombre/name/text'),
+    body()
+      .custom((value) => {
+        const hasQuery = typeof value.query === 'string' && value.query.trim().length > 0;
+        const hasQueries = Array.isArray(value.queries) && value.queries.length > 0;
+        return hasQuery || hasQueries;
+      })
+      .withMessage('Either query or queries is required'),
     body('slug')
       .isString()
       .trim()
@@ -33,17 +56,27 @@ const searchValidationRules = () => {
  */
 const batchSearchValidationRules = () => {
   return [
+    body('query')
+      .optional()
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage('Query must be a non-empty string'),
     body('queries')
+      .optional()
       .isArray({ min: 1, max: 50 })
       .withMessage('Queries must be an array with 1 to 50 items'),
     body('queries.*')
-      .custom((value) => {
-        if (typeof value === 'string') return value.trim().length > 0;
-        if (!value || typeof value !== 'object') return false;
-        const query = value.query || value.nombre || value.name || value.text;
-        return typeof query === 'string' && query.trim().length > 0;
-      })
+      .optional()
+      .custom(hasValidQueryValue)
       .withMessage('Each query must be a non-empty string or an object with query/nombre/name/text'),
+    body()
+      .custom((value) => {
+        const hasQuery = typeof value.query === 'string' && value.query.trim().length > 0;
+        const hasQueries = Array.isArray(value.queries) && value.queries.length > 0;
+        return hasQuery || hasQueries;
+      })
+      .withMessage('Either query or queries is required'),
     body('slug')
       .isString()
       .trim()

@@ -8,7 +8,39 @@ const logger = require('../config/logger');
  */
 async function search(req, res, next) {
   try {
-    const { query, slug, limit = 20, offset = 0 } = req.body;
+    const {
+      query,
+      queries,
+      slug,
+      limit = Array.isArray(queries) ? 10 : 20,
+      offset = 0,
+      concurrency = process.env.BATCH_CONCURRENCY || 8,
+    } = req.body;
+
+    if (Array.isArray(queries)) {
+      logger.info('Processing flexible batch search request', {
+        slug,
+        count: queries.length,
+        limit,
+        offset,
+        concurrency,
+      });
+
+      const result = await searchService.searchBatchWithFallback(
+        queries,
+        slug,
+        parseInt(limit),
+        parseInt(offset),
+        parseInt(concurrency)
+      );
+
+      res.json({
+        success: true,
+        mode: 'batch',
+        data: result,
+      });
+      return;
+    }
 
     logger.info('Processing search request', { query, slug, limit, offset });
 
@@ -38,22 +70,24 @@ async function searchBatch(req, res, next) {
   try {
     const {
       queries,
+      query,
       slug,
       limit = 10,
       offset = 0,
       concurrency = process.env.BATCH_CONCURRENCY || 8,
     } = req.body;
+    const normalizedQueries = Array.isArray(queries) ? queries : [query];
 
     logger.info('Processing batch search request', {
       slug,
-      count: Array.isArray(queries) ? queries.length : 0,
+      count: normalizedQueries.length,
       limit,
       offset,
       concurrency,
     });
 
     const result = await searchService.searchBatchWithFallback(
-      queries,
+      normalizedQueries,
       slug,
       parseInt(limit),
       parseInt(offset),
@@ -62,6 +96,7 @@ async function searchBatch(req, res, next) {
 
     res.json({
       success: true,
+      mode: Array.isArray(queries) ? 'batch' : 'single',
       data: result,
     });
 
