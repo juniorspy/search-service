@@ -1,6 +1,27 @@
 const searchService = require('../services/searchService');
 const logger = require('../config/logger');
 
+function splitMultilineQuery(query) {
+  if (typeof query !== 'string') return [];
+
+  return query
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const cleaned = line
+        .replace(/^[-*]\s+/, '')
+        .replace(/^\d+[.)]\s+/, '')
+        .trim();
+
+      return {
+        query: cleaned || line,
+        text: line,
+      };
+    })
+    .filter(item => item.query.length > 0);
+}
+
 /**
  * Handle search requests with local→global fallback
  *
@@ -16,18 +37,21 @@ async function search(req, res, next) {
       offset = 0,
       concurrency = process.env.BATCH_CONCURRENCY || 8,
     } = req.body;
+    const queryLines = Array.isArray(queries) ? [] : splitMultilineQuery(query);
+    const batchQueries = Array.isArray(queries) ? queries : queryLines.length > 1 ? queryLines : null;
 
-    if (Array.isArray(queries)) {
+    if (batchQueries) {
       logger.info('Processing flexible batch search request', {
         slug,
-        count: queries.length,
+        count: batchQueries.length,
+        mode: Array.isArray(queries) ? 'queries' : 'multiline_query',
         limit,
         offset,
         concurrency,
       });
 
       const result = await searchService.searchBatchWithFallback(
-        queries,
+        batchQueries,
         slug,
         parseInt(limit),
         parseInt(offset),
@@ -36,7 +60,7 @@ async function search(req, res, next) {
 
       res.json({
         success: true,
-        mode: 'batch',
+        mode: Array.isArray(queries) ? 'batch' : 'batch_from_query',
         data: result,
       });
       return;
