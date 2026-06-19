@@ -91,6 +91,109 @@ async function searchWithFallback(query, slug, limit = 20, offset = 0) {
   }
 }
 
+async function runWithConcurrency(items, concurrency, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await worker(items[index], index);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Performs many searches with bounded parallelism.
+ *
+ * This is intended for large orders where n8n already extracted a product list.
+ * It avoids 20+ sequential HTTP round-trips from the workflow while preserving
+ * the same local->global fallback semantics per product.
+ *
+ * @param {Array<Object|string>} queries - Search queries or item objects
+ * @param {string} slug - Store slug for local index
+ * @param {number} limit - Maximum results per query
+ * @param {number} offset - Offset for pagination
+ * @param {number} concurrency - Maximum parallel searches
+ * @returns {Promise<Object>} Batch search results
+ */
+async function searchBatchWithFallback(queries, slug, limit = 10, offset = 0, concurrency = 8) {
+  const startedAt = Date.now();
+  const safeConcurrency = Math.max(1, Math.min(parseInt(concurrency, 10) || 8, 20));
+  const normalized = queries.map((item, index) => {
+    if (typeof item === 'string') {
+      return { index, query: item.trim(), input: item };
+    }
+    return {
+      index,
+      query: String(item.query || item.nombre || item.name || item.text || '').trim(),
+      input: item,
+    };
+  });
+
+  logger.info('Batch search request', {
+    slug,
+    count: normalized.length,
+    limit,
+    offset,
+    concurrency: safeConcurrency,
+  });
+
+  const results = await runWithConcurrency(normalized, safeConcurrency, async (item) => {
+    if (!item.query) {
+      return {
+        index: item.index,
+        query: item.query,
+        input: item.input,
+        success: false,
+        error: 'empty_query',
+      };
+    }
+
+    try {
+      const result = await searchWithFallback(item.query, slug, limit, offset);
+      return {
+        index: item.index,
+        query: item.query,
+        input: item.input,
+        success: true,
+        data: result,
+      };
+    } catch (error) {
+      logger.warn('Batch item search failed', {
+        slug,
+        index: item.index,
+        query: item.query,
+        error: error.message,
+      });
+      return {
+        index: item.index,
+        query: item.query,
+        input: item.input,
+        success: false,
+        error: error.message,
+      };
+    }
+  });
+
+  const successCount = results.filter(item => item && item.success).length;
+  const failedCount = results.length - successCount;
+
+  return {
+    slug,
+    count: results.length,
+    successCount,
+    failedCount,
+    limit,
+    offset,
+    concurrency: safeConcurrency,
+    processingTimeMs: Date.now() - startedAt,
+    results,
+  };
+}
+
 /**
  * Health check for Meilisearch connection
  *
@@ -115,5 +218,6 @@ async function healthCheck() {
 
 module.exports = {
   searchWithFallback,
+  searchBatchWithFallback,
   healthCheck,
 };

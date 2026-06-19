@@ -37,6 +37,7 @@ app.get('/', (req, res) => {
     status: 'running',
     endpoints: {
       search: 'POST /api/v1/search',
+      batchSearch: 'POST /api/v1/search/batch',
       health: 'GET /health',
     },
   });

@@ -1,6 +1,6 @@
 const express = require('express');
 const searchController = require('../controllers/searchController');
-const { searchValidationRules, validate } = require('../middleware/validator');
+const { searchValidationRules, batchSearchValidationRules, validate } = require('../middleware/validator');
 
 const router = express.Router();
 
@@ -13,6 +13,17 @@ router.post(
   searchValidationRules(),
   validate,
   searchController.search
+);
+
+/**
+ * POST /api/v1/search/batch
+ * Batch search endpoint with local->global fallback per item
+ */
+router.post(
+  '/search/batch',
+  batchSearchValidationRules(),
+  validate,
+  searchController.searchBatch
 );
 
 /**
